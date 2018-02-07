@@ -2,17 +2,12 @@ use std::fmt::{self, Formatter, Display};
 use std::collections::HashMap;
 
 fn add_chars(how_many: usize, goal: String, c: char) -> String{
-    if how_many>0 {
-        add_chars(how_many-1, c.to_string() +  &goal, c)
-    } else {
-        goal
-    }
+    (0..how_many).map(|_| c.to_string()).collect::<String>() + &goal
 }
 
 fn add_zeroes(how_many: usize, goal: String) -> String{
     add_chars(how_many, goal, '0')
 }
-
 
 pub struct Automaton {
     pub generations: Vec<Ring>,
@@ -26,7 +21,7 @@ pub struct Ring {
 }
 
 impl Automaton {
-    pub fn new(base: Vec<char>, rule: usize, neighborhood: usize) -> Automaton{
+    pub fn new(base: &Vec<char>, rule: usize, neighborhood: usize) -> Automaton{
         let base_ring = Ring::from(base);
         let mut generations = Vec::new();
         let rules = HashMap::new();
@@ -42,8 +37,11 @@ impl Automaton {
         a
     }
 
+    /*
+    Produit les règles
+     */
     fn populate_rules(&mut self){
-        let boundary = self.neighborhood.pow(2)-1;
+        let boundary = usize::pow(2, self.neighborhood as u32);
         let mut rule_bin = {
             let bin = format!("{:b}", self.rule);
             let dif = boundary - bin.len();
@@ -58,13 +56,20 @@ impl Automaton {
         }
     }
 
+    /*
+    Produit la génération suivante
+     */
     pub fn next_gen(&mut self){
 
         let mut next_gen = Ring::new();
         {
             let last_gen = self.get_last();
             for i in 0..last_gen.size(){
-                let current = last_gen.get(i-1).to_string() + &last_gen.get(i).to_string() + &last_gen.get(i+1).to_string();
+                let dif = self.neighborhood as i32 / 2;
+                let range_inf = if self.neighborhood%2==0 {(i-dif+1..i)} else {(i-dif..i)};
+                let range_sup = i..i+dif+1;
+                let current = range_inf.map(|j| last_gen.get(j).to_string()).collect::<String>() +&range_sup.map(|j| last_gen.get(j).to_string()).collect::<String>();
+
                 let result = self.rules.get(&current).expect(&format!("This is not supposed to happen : no rules exist for this configuration: {}", current));
                 next_gen.push(result);
             }
@@ -76,6 +81,27 @@ impl Automaton {
         self.generations.last().unwrap()
     }
 
+    pub fn state_already_generated(&self) -> bool{
+        if self.generations.len()>1 {
+            for i in 0..self.generations.len()-1 {
+                let ring = self.generations.get(i).unwrap();
+                if self.get_last() == ring {
+                    return true
+                }
+            }
+        }
+        false
+    }
+
+    pub fn is_00000001(&self) -> bool{
+        let gens = self.generations.len();
+        if self.generations.len()>1 {
+            let last = self.get_last();
+            last.is_00000001_shifting_from(self.generations.get(gens-2).unwrap())
+        } else {
+            false
+        }
+    }
 }
 
 impl Display for Automaton {
@@ -83,7 +109,7 @@ impl Display for Automaton {
         let mut pretty_string = String::new();
         pretty_string.push_str(&format!("Rule : {}\n", self.rule));
         pretty_string.push_str(" | ");
-        let boundary = self.neighborhood.pow(2)-1;
+        let boundary = usize::pow(2, self.neighborhood as u32);
         let rule_bin = {
             let bin = format!("{:b}", self.rule);
             let dif = boundary - bin.len();
@@ -128,9 +154,9 @@ impl Ring {
         }
     }
 
-    pub fn from(base: Vec<char>) -> Ring{
+    pub fn from(base: &Vec<char>) -> Ring{
         Ring{
-            configuration: base
+            configuration: base.to_vec()
         }
     }
 
@@ -160,6 +186,52 @@ impl Ring {
         return self.configuration.len() as i32
     }
 
+    pub fn is_00000001_shifting_from(&self, other: &Ring) -> bool {
+        let ring = self.configuration.iter().map(|c| c.to_string()).collect::<String>();
+        //TODO nettoyer ça
+        let position1 = {
+            let mut position = -1;
+            for i in 0..self.size() {
+                if self.get(i) == &'1' {
+                    if position == -1 {
+                        position = i;
+                    } else {
+                        position = -1;
+                        break;
+                    }
+                }
+            }
+            position
+        };
+
+        let position2 = {
+            let mut position = -1;
+            for i in 0..other.size() {
+                if other.get(i) == &'1' {
+                    if position == -1 {
+                        position = i;
+                    } else {
+                        position = -1;
+                        break;
+                    }
+                }
+            }
+            position
+        };
+
+        if position1 > -1 && position2 > -1 {
+            if position2 == position1-1 {
+                println!("{} : {}       {} : {}", self, position1, other, position2);
+                //println!("{}", ring);
+                true
+            } else {
+                false
+            }
+        } else {
+            false
+        }
+    }
+
 }
 
 
@@ -178,15 +250,29 @@ impl Display for Ring {
     }
 }
 
+impl PartialEq for Ring {
+    fn eq(&self, other: &Ring) -> bool {
+        let first_ring = self.configuration.iter().map(|c| c.to_string()).collect::<String>();
+        let second_ring = other.configuration.iter().map(|c| c.to_string()).collect::<String>();
+        if first_ring == second_ring {
+            true
+        } else {
+            false
+        }
+    }
+}
+
 fn main() {
-    //for argument in env::args() {
     let base = vec!['0', '0', '0', '0', '0', '1'];
-    let mut automaton = Automaton::new(base, 1, 3);
-    automaton.next_gen();
-    automaton.next_gen();
-    automaton.next_gen();
-    automaton.next_gen();
-    automaton.next_gen();
-    automaton.next_gen();
-    println!("{}", automaton);
+    let n = 3;
+    let _max = usize::pow(2, u32::pow(2, n as u32));
+    for i in 1..256 {
+        let mut automaton = Automaton::new(&base, i , n);
+        while !automaton.state_already_generated(){
+            automaton.is_00000001();
+            automaton.next_gen();
+        }
+        //println!("{}", automaton);
+    }
+
 }
